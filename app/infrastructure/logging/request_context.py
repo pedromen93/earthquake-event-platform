@@ -1,0 +1,17 @@
+"""Request-scoped logging context helpers."""
+
+from contextvars import ContextVar
+
+request_id_context: ContextVar[str] = ContextVar("request_id", default="-")
+
+
+def set_request_id(request_id: str) -> None:
+    """Store the current request identifier in context."""
+
+    request_id_context.set(request_id)
+
+
+def get_request_id() -> str:
+    """Get the current request identifier from context."""
+
+    return request_id_context.get()

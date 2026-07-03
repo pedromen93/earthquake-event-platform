@@ -1,0 +1,14 @@
+.git
+.venv
+.pytest_cache
+.mypy_cache
+.ruff_cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.env
+imgs/
+tests/
+prueba_tecnica_extraccion_entregable.pdf

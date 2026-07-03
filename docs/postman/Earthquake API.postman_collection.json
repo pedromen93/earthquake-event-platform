@@ -1,0 +1,98 @@
+{
+  "info": {
+    "name": "Earthquake API",
+    "_postman_id": "2c6c0f7b-2b28-4f61-b54b-5a032d49b001",
+    "description": "Coleccion para validar los endpoints HTTP principales de la API. La validacion del WebSocket se documenta por separado en docs/websocket.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "wsBaseUrl",
+      "value": "ws://localhost:8000"
+    }
+  ],
+  "item": [
+    {
+      "name": "Get Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "health"]
+        }
+      }
+    },
+    {
+      "name": "Get Earthquakes",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/earthquakes?page=1&page_size=20&sort_by=event_time&sort_direction=desc",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "earthquakes"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "page_size", "value": "20" },
+            { "key": "sort_by", "value": "event_time" },
+            { "key": "sort_direction", "value": "desc" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Metrics",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/metrics?page=1&page_size=20&sort_by=window_start&sort_direction=desc",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "metrics"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "page_size", "value": "20" },
+            { "key": "sort_by", "value": "window_start" },
+            { "key": "sort_direction", "value": "desc" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Reports",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/reports?page=1&page_size=20&sort_by=report_date&sort_direction=desc",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "reports"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "page_size", "value": "20" },
+            { "key": "sort_by", "value": "report_date" },
+            { "key": "sort_direction", "value": "desc" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Run Ingestion",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/operations/ingestions/run",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "operations", "ingestions", "run"]
+        }
+      }
+    }
+  ]
+}

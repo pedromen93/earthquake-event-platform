@@ -1,0 +1,193 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: earthquake-mongodb
+    restart: unless-stopped
+    ports:
+      - "${MONGODB_PORT:-27017}:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - earthquake-network
+
+  api:
+    build:
+      context: .
+      dockerfile: deploy/docker/app.Dockerfile
+    container_name: earthquake-api
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_FILE:-.env}
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      # HTTP endpoints and the WebSocket stream share the same published port.
+      - "${APP_PORT:-8000}:8000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=5).read()",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - earthquake-network
+
+  ingestion-worker:
+    build:
+      context: .
+      dockerfile: deploy/docker/app.Dockerfile
+    container_name: earthquake-ingestion-worker
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_FILE:-.env}
+    command: python -m app.workers.ingestion.main
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - earthquake-network
+
+  airflow-postgres:
+    image: postgres:16-alpine
+    container_name: earthquake-airflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${AIRFLOW_POSTGRES_USER:-airflow}
+      POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD:-airflow}
+      POSTGRES_DB: ${AIRFLOW_POSTGRES_DB:-airflow}
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${AIRFLOW_POSTGRES_USER:-airflow} -d ${AIRFLOW_POSTGRES_DB:-airflow}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - earthquake-network
+
+  airflow-init:
+    build:
+      context: .
+      dockerfile: deploy/docker/airflow.Dockerfile
+    container_name: earthquake-airflow-init
+    restart: "no"
+    env_file:
+      - ${APP_ENV_FILE:-.env}
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/project/airflow/dags
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:-airflow}@airflow-postgres/${AIRFLOW_POSTGRES_DB:-airflow}
+      AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+      AIRFLOW_UID: ${AIRFLOW_UID:-50000}
+      PYTHONPATH: /opt/airflow/project
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - airflow_logs:/opt/airflow/logs
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate && \
+        airflow users create \
+          --username "${AIRFLOW_ADMIN_USERNAME:-admin}" \
+          --firstname Airflow \
+          --lastname Admin \
+          --role Admin \
+          --email admin@example.com \
+          --password "${AIRFLOW_ADMIN_PASSWORD:-admin}" || true
+    networks:
+      - earthquake-network
+
+  airflow-webserver:
+    build:
+      context: .
+      dockerfile: deploy/docker/airflow.Dockerfile
+    container_name: earthquake-airflow-webserver
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_FILE:-.env}
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/project/airflow/dags
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:-airflow}@airflow-postgres/${AIRFLOW_POSTGRES_DB:-airflow}
+      AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+      AIRFLOW_UID: ${AIRFLOW_UID:-50000}
+      PYTHONPATH: /opt/airflow/project
+    command: webserver
+    ports:
+      - "${AIRFLOW_WEBSERVER_PORT:-8080}:8080"
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+      mongodb:
+        condition: service_healthy
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - airflow_logs:/opt/airflow/logs
+    networks:
+      - earthquake-network
+
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: deploy/docker/airflow.Dockerfile
+    container_name: earthquake-airflow-scheduler
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_FILE:-.env}
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/project/airflow/dags
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:-airflow}@airflow-postgres/${AIRFLOW_POSTGRES_DB:-airflow}
+      AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+      AIRFLOW_UID: ${AIRFLOW_UID:-50000}
+      PYTHONPATH: /opt/airflow/project
+    command: scheduler
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+      mongodb:
+        condition: service_healthy
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - airflow_logs:/opt/airflow/logs
+    networks:
+      - earthquake-network
+
+volumes:
+  mongodb_data:
+  airflow_postgres_data:
+  airflow_logs:
+
+networks:
+  earthquake-network:
+    driver: bridge
